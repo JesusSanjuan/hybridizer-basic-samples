@@ -27,9 +27,11 @@ namespace CooperativeGroupsMultiBlock
                     beta += temp;
                     sdata[tid] = beta;
                 }
-                tile32.sync();
+
+                cg.sync(tile32);
             }
-            cta.sync();
+
+            cg.sync(cta);
 
             if (cta.thread_rank() == 0)
             {
@@ -40,7 +42,8 @@ namespace CooperativeGroupsMultiBlock
                 }
                 sdata[0] = beta;
             }
-            cta.sync();
+
+            cg.sync(cta);
         }
 
         [EntryPoint]
@@ -60,7 +63,7 @@ namespace CooperativeGroupsMultiBlock
                 sdata[block.thread_rank()] += g_idata[i];
             }
 
-            block.sync();
+            cg.sync(block);
 
             // Reduce each block (called once per block)
             reduceBlock(sdata, block);
@@ -70,7 +73,7 @@ namespace CooperativeGroupsMultiBlock
                 g_odata[blockIdx.x] = (float)sdata[0];
             }
 
-            grid.sync();
+            cg.sync(grid);
 
             if (grid.thread_rank() == 0)
             {
