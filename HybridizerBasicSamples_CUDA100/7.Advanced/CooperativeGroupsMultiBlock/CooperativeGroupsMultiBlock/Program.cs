@@ -27,7 +27,7 @@ namespace CooperativeGroupsMultiBlock
                     beta += temp;
                     sdata[tid] = beta;
                 }
-
+                
                 cg.sync(tile32);
             }
 
@@ -88,8 +88,8 @@ namespace CooperativeGroupsMultiBlock
         {
             // TODO: enable cudaOccupancyCalculator
             int deviceCount;
-            int numBlocks = 32; // 4 * prop.multiProcessorCount;
             int numThreads = 128;
+            int multiProcessorCount = 1;
             cuda.GetDeviceCount(out deviceCount);
             bool found = false;
             for (int i = 0; i < deviceCount; ++i)
@@ -99,8 +99,8 @@ namespace CooperativeGroupsMultiBlock
                 if (prop.cooperativeLaunch != 0)
                 {
                     cuda.SetDevice(i);
-                    numBlocks = 1 * prop.multiProcessorCount;
                     numThreads = 128;
+                    multiProcessorCount = prop.multiProcessorCount;
                     Console.Out.WriteLine($"running on device {i}");
                     found = true;
                     break;
@@ -112,6 +112,13 @@ namespace CooperativeGroupsMultiBlock
                 Environment.Exit(6);
             }
 
+
+            var runner = HybRunner.Cuda().SetGridSync(true);
+            dynamic wrapped = runner.Wrap(new Program());
+            int maxBlocksPerSM = wrapped.MaxBlocksPerSM(new Action<float[], float[], uint>(reduceSinglePassMultiBlockCG), numThreads, numThreads * sizeof(double) + 16);
+            int numBlocks = maxBlocksPerSM * multiProcessorCount;
+            wrapped.SetDistrib(numBlocks, 1, numThreads, 1, 1, numThreads * sizeof(double));
+
             const int N = 1024 * 1024;
 
             float[] a = new float[N];
@@ -121,12 +128,10 @@ namespace CooperativeGroupsMultiBlock
             {
                 a[i] = 1.0F;
             }
-            var runner = HybRunner.Cuda().SetGridSync(true);
-            dynamic wrapped = runner.SetDistrib(numBlocks, 1, numThreads, 1, 1, numThreads * sizeof(double)).Wrap(new Program());
-            runner.saveAssembly();
+
             cuda.ERROR_CHECK((cudaError_t)(int)wrapped.reduceSinglePassMultiBlockCG(a, b, N));
             cuda.ERROR_CHECK(cuda.DeviceSynchronize());
-            Console.Out.WriteLine(String.Join(", ", b.Take(32)));
+            Console.Out.WriteLine(b[0]);
         }
     }
 }
